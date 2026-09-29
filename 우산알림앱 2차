@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>비 오는 날 우산 알림 앱</title>
+  <style>
+    :root {
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --bg: #f3f4f6;
+      --card-bg: #ffffff;
+      --text: #1f2937;
+      --text-muted: #6b7280;
+      --rain-color: #0284c7;
+      --border: #e5e7eb;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 16px;
+      position: relative;
+    }
+
+    /* 화면 전체 깜빡임 오버레이 */
+    .flash-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(245, 158, 11, 0.85); /* 경고 노란/주황색 */
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    @keyframes alert-flash {
+      0% { opacity: 0; }
+      25% { opacity: 1; }
+      50% { opacity: 0.1; }
+      75% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    .flash-overlay.flashing {
+      animation: alert-flash 1.2s ease-in-out;
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 480px;
+      background-color: var(--card-bg);
+      border-radius: 20px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      height: fit-content;
+      min-height: 600px;
+    }
+
+    /* Header */
+    header {
+      padding: 20px;
+      background-color: #ffffff;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-title h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+
+    .icon-btn {
+      background: none;
+      border: none;
+      font-size: 1.3rem;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 50%;
+      transition: background-color 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .icon-btn:hover {
+      background-color: #f3f4f6;
+    }
+
+    /* Content Area */
+    .content {
+      padding: 20px;
+      flex: 1;
+    }
+
+    .view {
+      display: none;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    /* Setup View */
+    .setup-desc {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+
+    .day-selector-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .day-selector-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background-color: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .day-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .day-name {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .day-date {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .weather-toggle {
+      display: flex;
+      gap: 8px;
+    }
+
+    .toggle-btn {
+      padding: 6px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: white;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .toggle-btn.active-rain {
+      background-color: #e0f2fe;
+      color: #0369a1;
+      border-color: #7dd3fc;
+      font-weight: 600;
+    }
+
+    .toggle-btn.active-clear {
+      background-color: #fef3c7;
+      color: #b45309;
+      border-color: #fde68a;
+      font-weight: 600;
+    }
+
+    /* Main View */
+    .card {
+      background-color: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .rain-days-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .rain-day-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #ffffff;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border-left: 4px solid var(--rain-color);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .time-badge {
+      font-size: 0.75rem;
+      background-color: #e0f2fe;
+      color: #0369a1;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    .no-rain-msg {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .rule-box {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .rule-box li {
+      margin-left: 18px;
+      margin-bottom: 4px;
+    }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      background-color: var(--primary);
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background-color: #e5e7eb;
+      color: var(--text);
+      margin-top: 8px;
+    }
+
+    .btn-secondary:hover {
+      background-color: #d1d5db;
+    }
+
+    /* Settings Modal */
+    .modal-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 100;
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal {
+      background: white;
+      width: 100%;
+      border-top-left-radius: 20px;
+      border-top-right-radius: 20px;
+      padding: 24px 20px;
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+    }
+
+    .modal-overlay.open .modal {
+      transform: translateY(0);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .setting-group {
+      margin-bottom: 20px;
+    }
+
+    .setting-label {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .radio-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .radio-btn {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+
+    .radio-btn.selected {
+      border-color: var(--primary);
+      background-color: #eff6ff;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .slider-container input[type="range"] {
+      flex: 1;
+    }
+
+    /* Toast */
+    .toast {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: rgba(31, 41, 55, 0.9);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      transition: transform 0.3s ease;
+      z-index: 200;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 화면 깜빡임 오버레이 레이어 -->
+  <div class="flash-overlay" id="flash-overlay"></div>
+
+  <div class="app-container">
+    <header>
+      <div class="header-title">
+        <span>☂️</span>
+        <h1 id="header-text">날씨 입력</h1>
+      </div>
+      <button class="icon-btn" id="settings-btn" title="알림 설정">⚙️</button>
+    </header>
+
+    <div class="content">
+      <!-- 1. 7일 날씨 입력 화면 -->
+      <div id="setup-view" class="view active">
+        <p class="setup-desc">오늘부터 앞으로 7일간의 날씨를 선택해 주세요. 비 오는 날에 맞춰 알림이 설정됩니다.</p>
+        <div class="day-selector-list" id="weather-input-list"></div>
+        <button class="btn" id="save-weather-btn">설정 완료 및 알림 등록</button>
+      </div>
+
+      <!-- 2. 메인 Dashboard 화면 -->
+      <div id="main-view" class="view">
+        <div class="card">
+          <div class="card-title">이번 주 비 알림 일정</div>
+          <div class="rain-days-list" id="rain-schedule-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">알림 안내 규칙</div>
+          <ul class="rule-box">
+            <li><b>등교 알림:</b> 아침 08:00 (우산 챙기기)</li>
+            <li><b>하교 알림 (월/목/금):</b> 15:00 (6교시 끝)</li>
+            <li><b>하교 알림 (화/수):</b> 16:00 (7교시 끝)</li>
+            <li><b>주말:</b> 하교 알림 미발송</li>
+          </ul>
+        </div>
+
+        <button class="btn btn-secondary" id="reconfig-btn">7일 날씨 재설정</button>
+        <button class="btn btn-secondary" id="test-notify-btn" style="margin-top:8px;">테스트 알림 즉시 보내기</button>
+      </div>
+    </div>
+
+    <!-- 알림 설정 모달 -->
+    <div class="modal-overlay" id="settings-modal">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">🔔 알림 옵션 설정</div>
+          <button class="icon-btn" id="close-modal-btn">✕</button>
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">알림 모드</label>
+          <div class="radio-group" id="sound-mode-group">
+            <div class="radio-btn selected" data-mode="sound">소리 🔔</div>
+            <div class="radio-btn" data-mode="vibrate">진동 📳</div>
+            <div class="radio-btn" data-mode="mute">무음 🔇</div>
+          </div>
+        </div>
+
+        <div class="setting-group" id="volume-group">
+          <label class="setting-label">알림 음량 (<span id="volume-val">80</span>%)</label>
+          <div class="slider-container">
+            <span>🔈</span>
+            <input type="range" id="volume-range" min="0" max="100" value="80">
+            <span>🔊</span>
+          </div>
+        </div>
+
+        <button class="btn" id="save-settings-btn">설정 저장</button>
+      </div>
+    </div>
+
+    <!-- 토스트 메시지 -->
+    <div class="toast" id="toast">메시지</div>
+  </div>
+
+  <script>
+    // State management
+    const DAYS_KR = ['일', '월', '화', '수', '목', '금', '토'];
+    let weatherData = JSON.parse(localStorage.getItem('umbrella_weather_data')) || null;
+    let settings = JSON.parse(localStorage.getItem('umbrella_settings')) || {
+      mode: 'sound', // sound, vibrate, mute
+      volume: 80
+    };
+
+    // DOM Elements
+    const setupView = document.getElementById('setup-view');
+    const mainView = document.getElementById('main-view');
+    const headerText = document.getElementById('header-text');
+    const weatherInputList = document.getElementById('weather-input-list');
+    const rainScheduleList = document.getElementById('rain-schedule-list');
+    const settingsModal = document.getElementById('settings-modal');
+    const flashOverlay = document.getElementById('flash-overlay');
+    
+    // Temp selection state for setup
+    let tempWeatherState = [];
+
+    // Initialize App
+    function init() {
+      requestNotificationPermission();
+      setupEventListeners();
+
+      if (weatherData && weatherData.length === 7) {
+        showMainView();
+      } else {
+        showSetupView();
+      }
+    }
+
+    // Request Notification Permission
+    function requestNotificationPermission() {
+      if ('Notification' in window && Notification.permission !== 'granted') {
+        Notification.requestPermission();
+      }
+    }
+
+    // Render 7-day weather input list
+    function showSetupView() {
+      headerText.textContent = "7일 날씨 입력";
+      setupView.classList.add('active');
+      mainView.classList.remove('active');
+
+      weatherInputList.innerHTML = '';
+      tempWeatherState = [];
+
+      const today = new Date();
+
+      for (let i = 0; i < 7; i++) {
+        const d = new Date();
+        d.setDate(today.getDate() + i);
+
+        const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+        const dayName = DAYS_KR[d.getDay()];
+        const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+
+        const isRain = weatherData ? weatherData[i]?.isRain || false : false;
+        tempWeatherState.push({ date: d.toISOString(), dayOfWeek: d.getDay(), isRain });
+
+        const item = document.createElement('div');
+        item.className = 'day-selector-item';
+        item.innerHTML = `
+          <div class="day-info">
+            <span class="day-name">${i === 0 ? '오늘' : dayName + '요일'} ${isWeekend ? '🏠' : ''}</span>
+            <span class="day-date">${dateStr}</span>
+          </div>
+          <div class="weather-toggle">
+            <button class="toggle-btn ${!isRain ? 'active-clear' : ''}" onclick="toggleWeather(${i}, false)">맑음 ☀️</button>
+            <button class="toggle-btn ${isRain ? 'active-rain' : ''}" onclick="toggleWeather(${i}, true)">비 옴 🌧️</button>
+          </div>
+        `;
+        weatherInputList.appendChild(item);
+      }
+    }
+
+    window.toggleWeather = function(index, isRain) {
+      tempWeatherState[index].isRain = isRain;
+      const buttons = weatherInputList.children[index].querySelectorAll('.toggle-btn');
+      if (isRain) {
+        buttons[0].className = 'toggle-btn';
+        buttons[1].className = 'toggle-btn active-rain';
+      } else {
+        buttons[0].className = 'toggle-btn active-clear';
+        buttons[1].className = 'toggle-btn';
+      }
+    };
+
+    // Save Weather & Switch to Main View
+    function saveWeather() {
+      weatherData = tempWeatherState;
+      localStorage.setItem('umbrella_weather_data', JSON.stringify(weatherData));
+      showToast('날씨 정보가 저장되었습니다.');
+      showMainView();
+    }
+
+    // Show Main Dashboard
+    function showMainView() {
+      headerText.textContent = "우산 알림 대시보드";
+      setupView.classList.remove('active');
+      mainView.classList.add('active');
+
+      rainScheduleList.innerHTML = '';
+      const rainDays = weatherData.filter(d => d.isRain);
+
+      if (rainDays.length === 0) {
+        rainScheduleList.innerHTML = `<div class="no-rain-msg">☀️ 이번 주에는 비 예보가 없습니다.<br>우산을 두고 갈 걱정이 없네요!</div>`;
+        return;
+      }
+
+      rainDays.forEach(item => {
+        const d = new Date(item.date);
+        const dayIdx = d.getDay();
+        const dayName = DAYS_KR[dayIdx];
+        const dateStr = `${d.getMonth() + 1}/${d.getDate()} (${dayName})`;
+
+        let leaveTime = "";
+        if (dayIdx === 1 || dayIdx === 4 || dayIdx === 5) { // 월, 목, 금
+          leaveTime = "15:00 (하교)";
+        } else if (dayIdx === 2 || dayIdx === 3) { // 화, 수
+          leaveTime = "16:00 (하교)";
+        } else {
+          leaveTime = "주말 (하교알림 없음)";
+        }
+
+        const card = document.createElement('div');
+        card.className = 'rain-day-card';
+        card.innerHTML = `
+          <div>
+            <strong style="font-size:0.95rem;">${dateStr}</strong>
+            <div style="font-size:0.8rem; color: var(--text-muted); margin-top:2px;">등교 알림: 08:00</div>
+          </div>
+          <span class="time-badge">하교 ${leaveTime}</span>
+        `;
+        rainScheduleList.appendChild(card);
+      });
+    }
+
+    // Notification Audio Synthesizer (Beep Sound)
+    function playNotificationSound() {
+      if (settings.mode === 'mute') return;
+
+      if (settings.mode === 'vibrate' && navigator.vibrate) {
+        navigator.vibrate([200, 100, 200]);
+        return;
+      }
+
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        const volume = (settings.volume / 100) * 0.3; // Max volume 0.3
+        gain.gain.setValueAtTime(volume, ctx.currentTime);
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+        osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15); // A5
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      } catch (e) {
+        console.log("Audio play error:", e);
+      }
+    }
+
+    // Trigger Screen Flash Animation
+    function flashScreen() {
+      flashOverlay.classList.remove('flashing');
+      // Trigger reflow for animation restart
+      void flashOverlay.offsetWidth;
+      flashOverlay.classList.add('flashing');
+    }
+
+    // Trigger Desktop & In-App Notification
+    function triggerNotification(title, body) {
+      // 1. 화면 전체 깜빡임 실행
+      flashScreen();
+
+      // 2. 알림 소리/진동 실행 (설정 반영)
+      playNotificationSound();
+
+      // 3. 시스템/브라우저 알림 발송
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, {
+          body: body,
+          icon: 'https://cdn-icons-png.flaticon.com/512/1164/1164951.png'
+        });
+      } else {
+        alert(`${title}\n${body}`);
+      }
+    }
+
+    // UI Event Listeners
+    function setupEventListeners() {
+      document.getElementById('save-weather-btn').addEventListener('click', saveWeather);
+      
+      document.getElementById('reconfig-btn').addEventListener('click', () => {
+        showSetupView();
+      });
+
+      document.getElementById('test-notify-btn').addEventListener('click', () => {
+        triggerNotification('🌂 우산 챙기기 알림', '하교 시간입니다! 학교에 두고 온 우산을 꼭 집으로 가져가세요!');
+      });
+
+      // Settings Modal Control
+      const modal = document.getElementById('settings-modal');
+      document.getElementById('settings-btn').addEventListener('click', () => {
+        modal.classList.add('open');
+        updateSettingsUI();
+      });
+
+      document.getElementById('close-modal-btn').addEventListener('click', () => {
+        modal.classList.remove('open');
+      });
+
+      // Sound Mode Switch
+      const radioBtns = document.querySelectorAll('#sound-mode-group .radio-btn');
+      radioBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          radioBtns.forEach(r => r.classList.remove('selected'));
+          btn.classList.add('selected');
+          settings.mode = btn.dataset.mode;
+          
+          const volGroup = document.getElementById('volume-group');
+          if (settings.mode === 'mute') {
+            volGroup.style.opacity = '0.4';
+            volGroup.style.pointerEvents = 'none';
+          } else {
+            volGroup.style.opacity = '1';
+            volGroup.style.pointerEvents = 'auto';
+          }
+        });
+      });
+
+      // Volume Slider
+      const volRange = document.getElementById('volume-range');
+      const volVal = document.getElementById('volume-val');
+      volRange.addEventListener('input', (e) => {
+        settings.volume = e.target.value;
+        volVal.textContent = e.target.value;
+      });
+
+      // Save Settings
+      document.getElementById('save-settings-btn').addEventListener('click', () => {
+        localStorage.setItem('umbrella_settings', JSON.stringify(settings));
+        modal.classList.remove('open');
+        showToast('알림 설정이 저장되었습니다.');
+      });
+    }
+
+    function updateSettingsUI() {
+      const radioBtns = document.querySelectorAll('#sound-mode-group .radio-btn');
+      radioBtns.forEach(r => {
+        if (r.dataset.mode === settings.mode) {
+          r.classList.add('selected');
+        } else {
+          r.classList.remove('selected');
+        }
+      });
+
+      const volRange = document.getElementById('volume-range');
+      const volVal = document.getElementById('volume-val');
+      volRange.value = settings.volume;
+      volVal.textContent = settings.volume;
+
+      const volGroup = document.getElementById('volume-group');
+      if (settings.mode === 'mute') {
+        volGroup.style.opacity = '0.4';
+        volGroup.style.pointerEvents = 'none';
+      } else {
+        volGroup.style.opacity = '1';
+        volGroup.style.pointerEvents = 'auto';
+      }
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2500);
+    }
+
+    // Run App
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
